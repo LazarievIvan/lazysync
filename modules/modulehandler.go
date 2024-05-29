@@ -8,10 +8,12 @@ import (
 type Module interface {
 	GetId() string
 	SetupModule()
+	GetConfiguration() map[string]string
 	Sync()
 }
 
 type ModuleConfig interface {
+	GetConfigMap() map[string]string
 }
 
 type ModuleHandler struct {
@@ -43,6 +45,6 @@ func (mh *ModuleHandler) GetModuleByName(name string) (Module, error) {
 	if module, ok := mh.ModulesList[name]; ok {
 		return module, nil
 	}
-	err := fmt.Errorf("Module %s not found", name)
+	err := fmt.Errorf("module %s not found", name)
 	return nil, err
 }

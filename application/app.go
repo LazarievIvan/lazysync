@@ -72,22 +72,20 @@ func (s *Server) GetType() string {
 }
 
 func (s *Server) SetMode(module modules.Module) {
-	s.Configuration.Mode = module.GetId()
+	s.Configuration.Module = module.GetId()
+	s.Configuration.ModuleSpecificConfig = module.GetConfiguration()
 }
 
 func (s *Server) Setup() {
 	fmt.Println("Setting up server...")
-	configuration := AppConfiguration{
-		Mode:     s.GetType(),
-		Module:   s.Configuration.Mode,
-		Username: "server",
-	}
+	s.Configuration.Mode = s.GetType()
+	s.Configuration.Username = s.GetType()
 	/*
 		App Configuration is saved to .yaml file.
 		Step 1: generate base Configuration with: app mode
 		Step 2: generate module specific Configuration starting with: module
 	*/
-	saveConfiguration(configuration)
+	saveConfiguration(s.Configuration)
 	// Generate module specific Configuration.
 	s.GenerateKeys(2)
 }
@@ -194,17 +192,14 @@ func (c *Client) GetType() string {
 }
 
 func (c *Client) SetMode(module modules.Module) {
-	c.Configuration.Mode = module.GetId()
+	c.Configuration.Mode = c.GetType()
+	c.Configuration.Module = module.GetId()
 }
 
 func (c *Client) Setup() {
 	fmt.Println("Setting up client...")
-	configuration := AppConfiguration{
-		Mode:     c.GetType(),
-		Module:   c.Configuration.Mode,
-		Username: "synergy_animators",
-	}
-	saveConfiguration(configuration)
+	c.Configuration.Username = "synergy_animators"
+	saveConfiguration(c.Configuration)
 }
 
 func (c *Client) Run() {
@@ -262,8 +257,8 @@ func readPrivateKey(username string) *rsa.PrivateKey {
 	return key
 }
 
-func saveConfiguration(configuration AppConfiguration) {
-	yamlContents, err := yaml.Marshal(&configuration)
+func saveConfiguration(configuration *AppConfiguration) {
+	yamlContents, err := yaml.Marshal(configuration)
 	if err != nil {
 		panic(err)
 	}

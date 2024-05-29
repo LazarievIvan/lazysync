@@ -21,6 +21,7 @@ var setupCmd = &cobra.Command{
 		app := SetupApplication()
 		fmt.Println("Selected mode: " + app.GetType())
 		module := setupModule()
+		module.SetupModule()
 		fmt.Println("Selected module: " + module.GetId())
 		app.SetMode(module)
 		app.Setup()

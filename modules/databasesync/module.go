@@ -8,7 +8,17 @@ type DB struct {
 }
 
 func (db *DB) SetupModule() {
+	db.DatabaseConfig = &Config{
+		Host:     "localhost",
+		Port:     "80",
+		Username: "admin",
+		Password: "admin",
+		Database: "main",
+	}
+}
 
+func (db *DB) GetConfiguration() map[string]string {
+	return db.DatabaseConfig.GetConfigMap()
 }
 
 func (db *DB) GetId() string {
