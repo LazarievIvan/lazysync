@@ -1,0 +1,7 @@
+# Ignore directories
+/.idea
+/private
+
+# Ignore files.
+/config.yaml
+lazysync
