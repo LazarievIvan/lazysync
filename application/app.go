@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"gopkg.in/yaml.v3"
 	"io"
+	"lazysync/modules"
 	"log"
 	"math/rand"
 	"net/http"
@@ -20,15 +21,22 @@ import (
 
 const ConfigFile = "config.yaml"
 
+const ServerType = "server"
+
+const ClientType = "client"
+
 type App interface {
 	Setup()
 	Run()
+	GetType() string
+	SetMode(module modules.Module)
 }
 
 type AppConfiguration struct {
-	Mode     string `yaml:"mode"`
-	Username string `yaml:"username"`
-	Module   string `yaml:"module"`
+	Mode                 string            `yaml:"mode"`
+	Username             string            `yaml:"username"`
+	Module               string            `yaml:"module"`
+	ModuleSpecificConfig map[string]string `yaml:"config"`
 }
 
 type Server struct {
@@ -36,7 +44,7 @@ type Server struct {
 }
 
 type Client struct {
-	configuration *AppConfiguration
+	Configuration *AppConfiguration
 }
 
 func InitFromConfig() App {
@@ -51,19 +59,27 @@ func InitFromConfig() App {
 	}
 	fmt.Println(config.Mode)
 	switch config.Mode {
-	case "server":
+	case ServerType:
 		return &Server{Configuration: &config}
-	case "client":
-		return &Client{configuration: &config}
+	case ClientType:
+		return &Client{Configuration: &config}
 	}
 	return nil
+}
+
+func (s *Server) GetType() string {
+	return ServerType
+}
+
+func (s *Server) SetMode(module modules.Module) {
+	s.Configuration.Mode = module.GetId()
 }
 
 func (s *Server) Setup() {
 	fmt.Println("Setting up server...")
 	configuration := AppConfiguration{
-		Mode:     "server",
-		Module:   "TBD",
+		Mode:     s.GetType(),
+		Module:   s.Configuration.Mode,
 		Username: "server",
 	}
 	/*
@@ -173,11 +189,19 @@ func (_ *Server) generateUsername() string {
 	return sb.String()
 }
 
+func (c *Client) GetType() string {
+	return ClientType
+}
+
+func (c *Client) SetMode(module modules.Module) {
+	c.Configuration.Mode = module.GetId()
+}
+
 func (c *Client) Setup() {
 	fmt.Println("Setting up client...")
 	configuration := AppConfiguration{
-		Mode:     "client",
-		Module:   "TBD",
+		Mode:     c.GetType(),
+		Module:   c.Configuration.Mode,
 		Username: "synergy_animators",
 	}
 	saveConfiguration(configuration)
@@ -185,7 +209,7 @@ func (c *Client) Setup() {
 
 func (c *Client) Run() {
 	fmt.Println("Starting client...")
-	username := c.configuration.Username
+	username := c.Configuration.Username
 	key := readPrivateKey(username)
 	hashedUsername := sha256.Sum256([]byte(username))
 	signature, _ := rsa.SignPKCS1v15(cryptoRand.Reader, key, crypto.SHA256, hashedUsername[:])
@@ -194,7 +218,11 @@ func (c *Client) Run() {
 		panic(err)
 	}
 	if status == http.StatusOK {
-		// @todo run sync process.
+		moduleHandler := modules.InitModuleHandler()
+		_, err := moduleHandler.GetModuleByName(c.Configuration.Mode)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 

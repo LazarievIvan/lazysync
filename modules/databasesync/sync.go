@@ -1,4 +1,4 @@
-package database
+package databasesync
 
 import "fmt"
 
@@ -6,6 +6,6 @@ type SyncDatabase struct {
 	config *Config
 }
 
-func Sync() {
+func (db *DB) Sync() {
 	fmt.Println("Sync started")
 }

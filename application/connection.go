@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"lazysync/modules"
 	"log"
 	"net/http"
 )
 
+// @todo Implement JSON-RPC.
 const port string = ":8080"
 
 type User struct {
@@ -52,10 +54,16 @@ func GrantAccess(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func ProcessSync(w http.ResponseWriter, r *http.Request) {
+	// @todo change the stub.
+	fmt.Println("Sync Process")
+}
+
 func StartServer(server *Server) {
 	authHandler := http.HandlerFunc(GrantAccess)
 	mux := http.NewServeMux()
 	mux.Handle("/", Authorize(server, authHandler))
+	mux.Handle("/sync", http.HandlerFunc(ProcessSync))
 	log.Println("Started on port", port)
 	fmt.Println("To close connection CTRL+C")
 	err := http.ListenAndServe(port, mux)
@@ -92,4 +100,12 @@ func Connect(username string, signature []byte) (int, error) {
 		return http.StatusAccepted, err
 	}
 	return resp.StatusCode, nil
+}
+
+func RunSync(module modules.Module) {
+	// @todo prepare sync and run request.
+	_, err := http.NewRequest("GET", "http://localhost:8080/sync", nil)
+	if err != nil {
+		panic(err)
+	}
 }
