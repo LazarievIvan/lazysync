@@ -2,18 +2,14 @@ package modules
 
 import (
 	"fmt"
-	"lazysync/modules/databasesync"
+	"lazysync/modules/filesystem"
 )
 
 type Module interface {
 	GetId() string
 	SetupModule()
-	GetConfiguration() map[string]string
+	GetConfigurationValues() any
 	Sync()
-}
-
-type ModuleConfig interface {
-	GetConfigMap() map[string]string
 }
 
 type ModuleHandler struct {
@@ -27,9 +23,11 @@ func InitModuleHandler() *ModuleHandler {
 }
 
 func findModules() map[string]Module {
-	db := databasesync.Init()
+	filesync := filesystem.Init()
+	//upgrader := updater.Init()
 	return map[string]Module{
-		db.GetId(): db,
+		filesync.GetId(): filesync,
+		//upgrader.GetId(): upgrader,
 	}
 }
 

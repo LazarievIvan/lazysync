@@ -8,6 +8,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"lazysync/application"
+	"lazysync/application/client"
+	"lazysync/application/server"
+	"lazysync/application/service"
 	"lazysync/modules"
 	"os"
 )
@@ -21,9 +24,11 @@ var setupCmd = &cobra.Command{
 		app := SetupApplication()
 		fmt.Println("Selected mode: " + app.GetType())
 		module := setupModule()
-		module.SetupModule()
-		fmt.Println("Selected module: " + module.GetId())
-		app.SetMode(module)
+		if app.GetType() == server.Type {
+			module.SetupModule()
+			app.SetMode(module)
+			fmt.Println("Selected module: " + module.GetId())
+		}
 		app.Setup()
 	},
 }
@@ -76,8 +81,8 @@ func initialModel() *configModel {
 		// of the `choices` slice, above.
 		//selected: make(map[int]struct{}),
 		selected: map[int]application.App{
-			0: &application.Server{Configuration: &application.AppConfiguration{}},
-			1: &application.Client{Configuration: &application.AppConfiguration{}},
+			0: &server.Server{Configuration: &service.AppConfiguration{}},
+			1: &client.Client{Configuration: &service.AppConfiguration{}},
 		},
 		quit: false,
 	}
