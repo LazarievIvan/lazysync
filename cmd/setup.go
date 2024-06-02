@@ -26,9 +26,9 @@ var setupCmd = &cobra.Command{
 		module := setupModule()
 		if app.GetType() == server.Type {
 			module.SetupModule()
-			app.SetMode(module)
 			fmt.Println("Selected module: " + module.GetId())
 		}
+		app.SetMode(module)
 		app.Setup()
 	},
 }

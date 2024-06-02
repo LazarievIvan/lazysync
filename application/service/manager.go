@@ -1,6 +1,7 @@
 package service
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -44,4 +45,13 @@ func ReadPrivateKey(username string) *rsa.PrivateKey {
 		panic(err)
 	}
 	return key
+}
+
+func GenerateRandomBytesSequence(n int) []byte {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }

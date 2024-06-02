@@ -18,9 +18,9 @@ func InitFromConfig() App {
 	config := service.LoadConfiguration()
 	switch config.Mode {
 	case server.Type:
-		return &server.Server{Configuration: config}
+		return &server.Server{Configuration: config, ActiveSessions: map[string][]byte{}}
 	case client.Type:
-		return &client.Client{Configuration: config}
+		return &client.Client{Configuration: config, JWTToken: ""}
 	}
 	return nil
 }

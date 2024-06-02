@@ -2,14 +2,24 @@ package modules
 
 import (
 	"fmt"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/rpc"
+	"lazysync/application/service"
 	"lazysync/modules/filesystem"
 )
 
 type Module interface {
 	GetId() string
 	SetupModule()
-	GetConfigurationValues() any
-	Sync()
+	GetConfigurationValues() interface{}
+	SetConfiguration(configuration interface{})
+	Sync() service.SyncObject
+	GetSyncObjectInstance() service.SyncObject
+	ExecuteCommands(object service.SyncObject)
+}
+
+type WebServiceModule interface {
+	RegisterAsWebService(router *mux.Router, server *rpc.Server)
 }
 
 type ModuleHandler struct {
@@ -24,10 +34,8 @@ func InitModuleHandler() *ModuleHandler {
 
 func findModules() map[string]Module {
 	filesync := filesystem.Init()
-	//upgrader := updater.Init()
 	return map[string]Module{
 		filesync.GetId(): filesync,
-		//upgrader.GetId(): upgrader,
 	}
 }
 

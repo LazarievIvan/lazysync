@@ -10,7 +10,6 @@ import (
 	manager "lazysync/application/service"
 	"lazysync/application/web"
 	"lazysync/modules"
-	"net/http"
 	"os"
 )
 
@@ -18,6 +17,7 @@ const Type = "client"
 
 type Client struct {
 	Configuration *manager.AppConfiguration
+	JWTToken      string
 }
 
 func (c *Client) GetType() string {
@@ -25,12 +25,12 @@ func (c *Client) GetType() string {
 }
 
 func (c *Client) SetMode(module modules.Module) {
+	c.Configuration.Mode = c.GetType()
 	c.Configuration.Module = module.GetId()
 }
 
 func (c *Client) Setup() {
 	fmt.Println("Setting up client...")
-	c.Configuration.Mode = c.GetType()
 	username, err := c.ScanUsername()
 	if err != nil {
 		panic(err)
@@ -40,22 +40,28 @@ func (c *Client) Setup() {
 }
 
 func (c *Client) Run() {
-	fmt.Println("Starting server...")
+	fmt.Println("Starting client...")
 	username := c.Configuration.Username
 	key := manager.ReadPrivateKey(username)
 	hashedUsername := sha256.Sum256([]byte(username))
 	signature, _ := rsa.SignPKCS1v15(cryptoRand.Reader, key, crypto.SHA256, hashedUsername[:])
-	status, err := web.Connect(username, signature)
+	response, err := web.Login(username, signature)
 	if err != nil {
 		panic(err)
 	}
-	if status == http.StatusOK {
-		moduleHandler := modules.InitModuleHandler()
-		_, err := moduleHandler.GetModuleByName(c.Configuration.Mode)
-		if err != nil {
-			panic(err)
-		}
+	c.JWTToken = response.Object
+	moduleName := c.Configuration.Module
+	moduleInstance := modules.InitModuleHandler()
+	module, err := moduleInstance.GetModuleByName(moduleName)
+	if err != nil {
+		panic(err)
 	}
+	expectedObject := module.GetSyncObjectInstance()
+	syncResponse, err := web.Sync(username, c.JWTToken, c.Configuration.Module, expectedObject)
+	if err != nil {
+		panic(err)
+	}
+	module.ExecuteCommands(*syncResponse)
 }
 
 func (c *Client) ScanUsername() (string, error) {

@@ -9,10 +9,10 @@ import (
 const ConfigFile = "config.yaml"
 
 type AppConfiguration struct {
-	Mode                 string `yaml:"mode"`
-	Username             string `yaml:"username"`
-	Module               string `yaml:"module"`
-	ModuleSpecificConfig any    `yaml:"config"`
+	Mode                 string      `yaml:"mode"`
+	Username             string      `yaml:"username"`
+	Module               string      `yaml:"module"`
+	ModuleSpecificConfig interface{} `yaml:"config"`
 }
 
 func SaveConfiguration(configuration *AppConfiguration) {

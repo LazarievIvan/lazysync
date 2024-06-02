@@ -7,10 +7,14 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/rpc"
+	jsonrpc "github.com/gorilla/rpc/json"
 	"io"
 	manager "lazysync/application/service"
-	"lazysync/application/web"
 	"lazysync/modules"
 	"log"
 	"math/rand"
@@ -25,7 +29,8 @@ const Type = "server"
 const port string = ":8080"
 
 type Server struct {
-	Configuration *manager.AppConfiguration
+	Configuration  *manager.AppConfiguration
+	ActiveSessions map[string][]byte
 }
 
 func (s *Server) GetType() string {
@@ -56,12 +61,20 @@ func (s *Server) Run() {
 	s.StartServer()
 }
 
-func (s *Server) AuthorizeUser(username string, signature []byte) bool {
+func (s *Server) AuthorizeUserWithKey(username string, signature []byte) bool {
 	userPubKey := manager.ReadPublicKey(username)
 	hashedUsername := sha256.Sum256([]byte(username))
 	err := rsa.VerifyPKCS1v15(userPubKey, crypto.SHA256, hashedUsername[:], signature)
 	if err != nil {
 		fmt.Println(err.Error())
+		return false
+	}
+	return true
+}
+
+func (s *Server) AuthorizeUserWithToken(username string, token string) bool {
+	err := s.verifyToken(username, token)
+	if err != nil {
 		return false
 	}
 	return true
@@ -148,38 +161,126 @@ func (_ *Server) generateUsername() string {
 	return sb.String()
 }
 
-func (s *Server) Authorize(accessHandler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, err := web.GetUserFromRequest(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		authorized := s.AuthorizeUser(user.Username, user.Signature)
-		if !authorized {
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-			return
-		}
-		// Authorize via server.
-		accessHandler.ServeHTTP(w, r)
+func (s *Server) createToken(username string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
+		jwt.MapClaims{
+			"username": username,
+			"exp":      time.Now().Add(time.Hour * 24).Unix(),
+		})
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	numberOfBytes := rand.Intn(256-128+1) + 128
+	secret := manager.GenerateRandomBytesSequence(numberOfBytes)
+	tokenString, err := token.SignedString(secret)
+	if err != nil {
+		return "", err
+	}
+	s.ActiveSessions[username] = secret
+	return tokenString, nil
+}
+
+func (s *Server) verifyToken(username string, tokenString string) error {
+	secret := s.ActiveSessions[username]
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return secret, nil
 	})
+
+	if err != nil {
+		return err
+	}
+
+	if !token.Valid {
+		return fmt.Errorf("invalid token")
+	}
+
+	return nil
+}
+
+func (s *Server) Authorize(r *http.Request, args *manager.AuthenticationArgs, reply *manager.AuthenticationResponse) error {
+	var response manager.AuthenticationResponse
+	if args.Token == nil {
+		return errors.New("no token provided")
+	}
+	token := args.Token
+	authorized, err := s.performAuthentication(token)
+	if !authorized || err != nil {
+		return errors.New("not authorized")
+	}
+	if token.TokenType == manager.TokenTypeKey {
+		jwtToken, err := s.createToken(token.Username)
+		if err != nil {
+			return err
+		}
+		response.Object = jwtToken
+	}
+	response.Status = http.StatusOK
+	*reply = response
+	return nil
+}
+
+func (s *Server) performAuthentication(token *manager.AuthenticationToken) (bool, error) {
+	authorized := false
+	switch token.TokenType {
+	case manager.TokenTypeKey:
+		authorized = s.AuthorizeUserWithKey(token.Username, token.Token)
+	case manager.TokenTypeJWT:
+		authorized = s.AuthorizeUserWithToken(token.Username, string(token.Token))
+		if !authorized {
+			return false, errors.New("invalid token")
+		}
+	}
+	return authorized, nil
+}
+
+func (s *Server) Synchronize(r *http.Request, args *manager.SynchronizationArgs, reply *manager.SynchronizationResponse) error {
+	var response manager.SynchronizationResponse
+	authorized, err := s.performAuthentication(args.Token)
+	if !authorized || err != nil {
+		return errors.New("not authorized, please re-run application")
+	}
+	if s.Configuration.Module != args.Module {
+		return errors.New("enabled module does not match given module: " + args.Module)
+	}
+	moduleName := args.Module
+	moduleInstance := modules.InitModuleHandler()
+	module, err := moduleInstance.GetModuleByName(moduleName)
+	if err != nil {
+		return errors.New("module not found: " + moduleName)
+	}
+	module.SetConfiguration(s.Configuration.ModuleSpecificConfig)
+	syncResponse := module.Sync()
+	response.Status = http.StatusOK
+	response.Object = &syncResponse
+	*reply = response
+	return nil
 }
 
 func (s *Server) StartServer() {
-	authHandler := http.HandlerFunc(GrantAccess)
-	mux := http.NewServeMux()
-	mux.Handle("/", s.Authorize(authHandler))
-	//mux.Handle("/sync", http.HandlerFunc(ProcessSync))
-	log.Println("Started on port", port)
-	fmt.Println("To close connection CTRL+C")
-	err := http.ListenAndServe(port, mux)
+	rpcServer := rpc.NewServer()
+	rpcServer.RegisterCodec(jsonrpc.NewCodec(), "application/json")
+	err := rpcServer.RegisterService(s, "")
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-func GrantAccess(w http.ResponseWriter, r *http.Request) {
-	_, err := w.Write([]byte("Authorized"))
+	router := mux.NewRouter()
+	router.Handle("/", rpcServer)
+	// Registered module-specific routers, if any.
+	moduleName := s.Configuration.Module
+	moduleInstance := modules.InitModuleHandler()
+	module, err := moduleInstance.GetModuleByName(moduleName)
+	if err != nil {
+		log.Fatal("module not found: " + moduleName)
+	}
+	module.SetConfiguration(s.Configuration.ModuleSpecificConfig)
+	if module, ok := module.(modules.WebServiceModule); ok {
+		err = rpcServer.RegisterService(module, "")
+		module.RegisterAsWebService(router, rpcServer)
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Started on port", port)
+	fmt.Println("To close connection CTRL+C")
+	err = http.ListenAndServe(port, router)
 	if err != nil {
 		log.Fatal(err)
 	}
